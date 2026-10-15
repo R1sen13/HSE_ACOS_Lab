@@ -70,3 +70,31 @@ report() {
     echo "FAIL: $name"
   fi
 }
+
+dir_bytes() {
+  find "$1" -maxdepth 1 -type f -printf '%s\n' | awk '{s+=$1} END{print s+0}'
+}
+
+fill_percent() {
+  local dir="$1"
+  local capacity="$2"
+
+  echo $(( $(dir_bytes "$dir") * 100 / capacity ))
+}
+
+
+bytes_to_free() {
+  local dir="$1"
+  local capacity="$2"
+  local threshold="$3"
+  local used limit
+
+  used=$(dir_bytes "$dir")
+  limit=$((capacity * threshold / 100))
+
+  if [ "$used" -gt "$limit" ]; then
+    echo $((used - limit))
+  else
+    echo 0
+  fi
+}

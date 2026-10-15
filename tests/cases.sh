@@ -189,3 +189,59 @@ max_compression() {
 
   verify_archive "$archive" || return 1
 }
+
+full_scenario() {
+  setup_env
+
+  local mb=$((1024 * 1024))
+  local capacity=$((1000 * mb))
+  local threshold=70
+  local to_free fill archive selected expected
+
+  # Заполнение ниже порога: ротация не нужна, архив не создаётся
+  make_file "log-1.log" 160 "2024-01-01 00:00"
+  make_file "log-2.log" 160 "2024-01-02 00:00"
+
+  fill=$(fill_percent "$LOG_DIR" "$capacity")
+  assert_eq "$fill" "32" "fill below threshold" || return 1
+  to_free=$(bytes_to_free "$LOG_DIR" "$capacity" "$threshold")
+  assert_eq "$to_free" "0" "nothing to free" || return 1
+  assert_eq "$(find "$BACKUP_DIR" -type f | wc -l)" "0" "no archive below threshold" || return 1
+
+  # Заполнение выше порога: ротация запускается
+  make_file "log-3.log" 160 "2024-01-03 00:00"
+  make_file "log-4.log" 160 "2024-01-04 00:00"
+  make_file "log-5.log" 160 "2024-01-05 00:00"
+  make_file "log-6.log" 160 "2024-01-06 00:00"
+
+  fill=$(fill_percent "$LOG_DIR" "$capacity")
+  assert_eq "$fill" "96" "fill above threshold" || return 1
+  to_free=$(bytes_to_free "$LOG_DIR" "$capacity" "$threshold")
+  assert_eq "$to_free" "$((260 * mb))" "bytes to free" || return 1
+
+  # Выбираются старейшие файлы в достаточном количестве
+  select_files "$LOG_DIR" "$to_free" "$PATHS_FILE" || return 1
+  selected=$(selected_basenames "$PATHS_FILE")
+  expected=$(printf '%s\n' "log-1.log" "log-2.log" | sort)
+  assert_eq "$selected" "$expected" "selected oldest files" || return 1
+
+  # Архив создаётся и проверяется
+  archive=$(create_archive "$BACKUP_DIR" "$PATHS_FILE") || return 1
+  assert_exists "$archive" "archive created" || return 1
+  verify_archive "$archive" || return 1
+  assert_archive_names "$archive" "$expected" || return 1
+
+  # Исходники удаляются только после успешной проверки
+  assert_exists "$LOG_DIR/log-1.log" "log-1 kept until verified" || return 1
+  assert_exists "$LOG_DIR/log-2.log" "log-2 kept until verified" || return 1
+  remove_archived_files "$PATHS_FILE" || return 1
+  assert_missing "$LOG_DIR/log-1.log" "log-1 removed" || return 1
+  assert_missing "$LOG_DIR/log-2.log" "log-2 removed" || return 1
+  assert_exists "$LOG_DIR/log-3.log" "log-3 kept" || return 1
+  assert_exists "$LOG_DIR/log-6.log" "log-6 kept" || return 1
+
+  # Итоговое заполнение пересчитывается и не выше порога
+  fill=$(fill_percent "$LOG_DIR" "$capacity")
+  assert_eq "$fill" "64" "fill after rotation" || return 1
+  [ "$fill" -le "$threshold" ] || { echo "  fill $fill% is above threshold" >&2; return 1; }
+}

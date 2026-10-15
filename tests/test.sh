@@ -39,6 +39,7 @@ run_case oldest_selected
 run_case invalid_args
 run_case spaces_in_names
 run_case max_compression
+run_case full_scenario
 
 echo "Passed: $PASSED/$TOTAL"
 
