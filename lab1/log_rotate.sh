@@ -1,21 +1,13 @@
 #!/usr/bin/env bash
 
-<<<<<<< Updated upstream
-set -o pipefail
-=======
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     set -e -u -o pipefail
 fi
->>>>>>> Stashed changes
 
 log_dir=""
 backup_dir=""
 threshold=70
-<<<<<<< Updated upstream
-limit_bytes=""
-temp_dir=""
-=======
 temp_dir=""
 
 FILES=()
@@ -83,7 +75,6 @@ file_size() {
     printf '%s\n' "$(printf '%s' "$size" | tr -d ' ')"
 }
 
->>>>>>> Stashed changes
 
 select_files() {
     local log_dir="$1"
@@ -229,39 +220,6 @@ remove_archived_files() {
 
     while IFS= read -r -d '' filepath; do
         if ! rm -- "$filepath"; then
-<<<<<<< Updated upstream
-        	echo "Cannot remove file: $filepath" >&2
-        	return 1
-    	fi
-    done < "$paths_file"
-}
-
-get_log_size() {
-    local directory="$1"
-    local total_size_bytes=0
-    local size
-
-    while IFS= read -r size; do
-        total_size_bytes=$((total_size_bytes + size))
-    done < <(
-        find "$directory" -maxdepth 1 -type f -printf '%s\n'
-    )
-
-    echo "$total_size_bytes"
-}
-
-parse_arguments() {
-    OPTIND=1
-
-    while getopts ":p:x:b:s:h" opt; do
-        case "$opt" in
-            p) log_dir="$OPTARG" ;;
-            x) threshold="$OPTARG" ;;
-            b) backup_dir="$OPTARG" ;;
-            s) limit_bytes="$OPTARG" ;;
-            h)
-                echo "Usage: $0 -p LOG_DIR -b BACKUP_DIR [-x THRESHOLD] [-s LIMIT_BYTES]"
-=======
             echo "Cannot remove file: $filepath" >&2
             return 1
         fi
@@ -284,7 +242,6 @@ parse_arguments() {
                 ;;
             h)
                 show_help
->>>>>>> Stashed changes
                 exit 0
                 ;;
             :)
@@ -307,41 +264,6 @@ parse_arguments() {
 }
 
 validate_arguments() {
-<<<<<<< Updated upstream
-    if [[ -z "$log_dir" || -z "$backup_dir" ]]; then
-        echo "Error: options -p and -b are required" >&2
-        return 1
-    fi
-
-    if [[ ! "$threshold" =~ ^[0-9]+$ ]]; then
-        echo "Error: threshold must be an integer from 1 to 100" >&2
-        return 1
-    fi
-
-    threshold=$((10#$threshold))
-
-    if (( threshold < 1 || threshold > 100 )); then
-        echo "Error: threshold must be an integer from 1 to 100" >&2
-        return 1
-    fi
-
-    if [[ -n "$limit_bytes" ]]; then
-        if [[ ! "$limit_bytes" =~ ^[0-9]+$ ]]; then
-            echo "Error: -s must be a positive integer in bytes" >&2
-            return 1
-        fi
-
-        limit_bytes=$((10#$limit_bytes))
-
-        if (( limit_bytes <= 0 )); then
-            echo "Error: -s must be a positive integer in bytes" >&2
-            return 1
-        fi
-    fi
-}
-
-validate_directories() {
-=======
     if [[ -z "$log_dir" ]]; then
         echo "Error: option -p LOG_DIR is required" >&2
         return 1
@@ -363,7 +285,6 @@ validate_directories() {
     local real_log_dir
     local real_backup_dir
 
->>>>>>> Stashed changes
     if [[ ! -d "$log_dir" ]]; then
         echo "Error: log directory does not exist: $log_dir" >&2
         return 1
@@ -374,12 +295,8 @@ validate_directories() {
         return 1
     fi
 
-<<<<<<< Updated upstream
-    if [[ -z "$(find "$log_dir" -maxdepth 1 -type f -print -quit)" ]]; then
-=======
     collect_files "$log_dir"
     if (( ${#FILES[@]} == 0 )); then
->>>>>>> Stashed changes
         echo "Error: no files found in log directory" >&2
         return 1
     fi
@@ -394,24 +311,13 @@ validate_directories() {
         return 1
     fi
 
-<<<<<<< Updated upstream
-    local real_log_dir
-    local real_backup_dir
-
-    real_log_dir=$(realpath "$log_dir") || {
-=======
     # realpath is missing on older macOS and some BSDs, so use cd -P and pwd -P.
     real_log_dir=$(cd -P -- "$log_dir" && pwd -P) || {
->>>>>>> Stashed changes
         echo "Error: cannot resolve log directory path" >&2
         return 1
     }
 
-<<<<<<< Updated upstream
-    real_backup_dir=$(realpath "$backup_dir") || {
-=======
     real_backup_dir=$(cd -P -- "$backup_dir" && pwd -P) || {
->>>>>>> Stashed changes
         echo "Error: cannot resolve backup directory path" >&2
         return 1
     }
@@ -422,28 +328,6 @@ validate_directories() {
     fi
 }
 
-<<<<<<< Updated upstream
-get_limit_bytes() {
-    local filesystem_size
-
-    if [[ -n "$limit_bytes" ]]; then
-        echo "$limit_bytes"
-        return 0
-    fi
-
-    filesystem_size=$(df -B1 --output=size "$log_dir" | tail -n 1 | tr -d ' ')
-
-    if [[ ! "$filesystem_size" =~ ^[0-9]+$ ]] ||
-       (( filesystem_size <= 0 )); then
-        echo "Error: cannot determine file system size" >&2
-        return 1
-    fi
-
-    echo "$filesystem_size"
-}
-
-rotate_logs() {
-=======
 get_fs_usage() {
     local directory="$1"
     local stats
@@ -470,15 +354,11 @@ get_fs_usage() {
 
 rotate_logs() {
     local fs_size
->>>>>>> Stashed changes
     local current_bytes
     local current_percent
     local target_bytes
     local required_bytes
-<<<<<<< Updated upstream
-=======
     local stats
->>>>>>> Stashed changes
     local paths_file
     local selected_count=0
     local selected_bytes=0
@@ -486,15 +366,6 @@ rotate_logs() {
     local size
     local archive_path
 
-<<<<<<< Updated upstream
-    current_bytes=$(get_log_size "$log_dir") || return 1
-    current_percent=$((current_bytes * 100 / limit_bytes))
-
-    echo "Current fill: $current_percent%"
-    echo "Threshold: $threshold%"
-
-    if (( current_bytes * 100 <= limit_bytes * threshold )); then
-=======
     stats=$(get_fs_usage "$log_dir") || return 1
     read -r fs_size current_bytes <<< "$stats"
 
@@ -506,19 +377,10 @@ rotate_logs() {
     echo "Threshold: ${threshold}%"
 
     if (( current_bytes * 100 <= fs_size * threshold )); then
->>>>>>> Stashed changes
         echo "No rotation required."
         return 0
     fi
 
-<<<<<<< Updated upstream
-    target_bytes=$((limit_bytes * threshold / 100))
-    required_bytes=$((current_bytes - target_bytes))
-
-    echo "Need to free at least $required_bytes bytes."
-
-    temp_dir=$(mktemp -d) || {
-=======
     if (( required_bytes <= 0 )); then
         required_bytes=1
     fi
@@ -526,7 +388,6 @@ rotate_logs() {
     echo "Need to free at least ${required_bytes} bytes."
 
     temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/log_rotate.XXXXXX") || {
->>>>>>> Stashed changes
         echo "Error: cannot create temporary directory" >&2
         return 1
     }
@@ -541,11 +402,7 @@ rotate_logs() {
     fi
 
     while IFS= read -r -d '' filepath; do
-<<<<<<< Updated upstream
-        size=$(stat -c '%s' "$filepath") || {
-=======
         size=$(file_size "$filepath") || {
->>>>>>> Stashed changes
             echo "Error: cannot get file size: $filepath" >&2
             return 1
         }
@@ -576,22 +433,6 @@ rotate_logs() {
         return 1
     fi
 
-<<<<<<< Updated upstream
-    current_bytes=$(get_log_size "$log_dir") || return 1
-    current_percent=$((current_bytes * 100 / limit_bytes))
-
-    echo "Final fill: $current_percent%"
-    echo "Rotation completed successfully."
-}
-
-parse_arguments "$@" || exit 1
-validate_arguments || exit 1
-validate_directories || exit 1
-
-limit_bytes=$(get_limit_bytes) || exit 1
-
-rotate_logs || exit 1
-=======
     stats=$(get_fs_usage "$log_dir") || return 1
     read -r fs_size current_bytes <<< "$stats"
 
@@ -614,4 +455,3 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     validate_directories || exit 1
     rotate_logs || exit 1
 fi
->>>>>>> Stashed changes
