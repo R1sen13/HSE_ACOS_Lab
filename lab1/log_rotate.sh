@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -o pipefail
+set -e -u -o pipefail
 
 log_dir=""
 backup_dir=""
