@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-set -e -u -o pipefail
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    set -e -u -o pipefail
+fi
 
 log_dir=""
 backup_dir=""
@@ -342,8 +344,10 @@ rotate_logs() {
     return 0
 }
 
-parse_arguments "$@" || exit 1
-validate_arguments || exit 1
-validate_directories || exit 1
-rotate_logs || exit 1
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    parse_arguments "$@" || exit 1
+    validate_arguments || exit 1
+    validate_directories || exit 1
+    rotate_logs || exit 1
+fi
 
