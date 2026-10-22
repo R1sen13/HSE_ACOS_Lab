@@ -7,7 +7,11 @@ PROJECT_DIR="$(dirname -- "$SCRIPT_DIR")"
 
 MOUNT_DIR="$PROJECT_DIR/logs"
 STATE_FILE="$SCRIPT_DIR/.log_disk_state"
-OS="$(uname -s)"
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "Error: Linux or Windows with WSL is required" >&2
+    exit 1
+fi
 
 SUDO=""
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -34,15 +38,12 @@ if [[ -f "$STATE_FILE" ]]; then
 fi
 
 if [[ -z "$IMG_FILE" ]]; then
-    case "$OS" in
-        Darwin) IMG_FILE="$SCRIPT_DIR/log.dmg" ;;
-        *)      IMG_FILE="$SCRIPT_DIR/log.img" ;;
-    esac
+    IMG_FILE="$SCRIPT_DIR/log.img"
 fi
 
 if is_mounted; then
     EXTRA_FILES=$(ls -A "$MOUNT_DIR" |
-        grep -v -E '^(lost\+found|\.fseventsd|\.Spotlight-V100|\.Trashes|\.TemporaryItems)$' ||
+        grep -v -x 'lost+found' ||
         true)
 
     if [[ -n "$EXTRA_FILES" ]]; then
@@ -59,37 +60,17 @@ if is_mounted; then
 fi
 
 if is_mounted; then
-    case "$OS" in
-        Darwin)
-            $SUDO hdiutil detach -quiet "$MOUNT_DIR" ||
-                $SUDO hdiutil detach -quiet -force "$MOUNT_DIR"
-            ;;
-        Linux)
-            if ! $SUDO umount "$MOUNT_DIR"; then
-                echo "Mount point is busy, using lazy unmount."
-                $SUDO umount -l "$MOUNT_DIR"
-            fi
-            ;;
-        *)
-            $SUDO umount "$MOUNT_DIR" || $SUDO umount -f "$MOUNT_DIR"
-            ;;
-    esac
+    if ! $SUDO umount "$MOUNT_DIR"; then
+        echo "Mount point is busy, using lazy unmount."
+        $SUDO umount -l "$MOUNT_DIR"
+    fi
 fi
 
-case "$OS" in
-    Linux)
-        if [[ -f "$IMG_FILE" ]] && command -v losetup > /dev/null 2>&1; then
-            for LOOP_DEV in $($SUDO losetup -j "$IMG_FILE" | awk -F: '{print $1}'); do
-                $SUDO losetup -d "$LOOP_DEV"
-            done
-        fi
-        ;;
-    FreeBSD)
-        if [[ -n "$DEV" ]]; then
-            $SUDO mdconfig -d -u "$DEV"
-        fi
-        ;;
-esac
+if [[ -f "$IMG_FILE" ]] && command -v losetup > /dev/null 2>&1; then
+    for LOOP_DEV in $($SUDO losetup -j "$IMG_FILE" | awk -F: '{print $1}'); do
+        $SUDO losetup -d "$LOOP_DEV"
+    done
+fi
 
 if [[ -f "$IMG_FILE" ]]; then
     rm -- "$IMG_FILE"

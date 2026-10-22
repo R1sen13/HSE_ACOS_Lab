@@ -9,9 +9,6 @@ backup_dir=""
 threshold=70
 temp_dir=""
 
-FILES=()
-STAT_MODE=""
-
 show_help() {
     echo "Usage: $0 -p LOG_DIR -b BACKUP_DIR [-x THRESHOLD]"
     echo "  -p LOG_DIR      Directory containing log files"
@@ -20,58 +17,8 @@ show_help() {
     echo "  -h              Show this help"
 }
 
-
-collect_files() {
-    local dir="$1"
-    local restore
-    local f
-
-    FILES=()
-    restore=$(shopt -p dotglob nullglob || true)
-    shopt -s dotglob nullglob
-
-    for f in "$dir"/*; do
-        if [[ -f "$f" && ! -L "$f" ]]; then
-            FILES+=("$f")
-        fi
-    done
-
-    eval "$restore"
-}
-
-detect_stat() {
-    if stat -c '%Y' / > /dev/null 2>&1; then
-        STAT_MODE="gnu"
-    elif stat -f '%m' / > /dev/null 2>&1; then
-        STAT_MODE="bsd"
-    elif command -v perl > /dev/null 2>&1; then
-        STAT_MODE="perl"
-    else
-        STAT_MODE="none"
-    fi
-}
-
-file_mtime() {
-    if [[ -z "$STAT_MODE" ]]; then
-        detect_stat
-    fi
-
-    case "$STAT_MODE" in
-        gnu)  stat -c '%Y' "$1" ;;
-        bsd)  stat -f '%m' "$1" ;;
-        perl) perl -e 'print((stat($ARGV[0]))[9])' "$1" ;;
-        *)
-            echo "Error: neither stat nor perl is available" >&2
-            return 1
-            ;;
-    esac
-}
-
 file_size() {
-    local size
-
-    size=$(wc -c < "$1") || return 1
-    printf '%s\n' "$(printf '%s' "$size" | tr -d ' ')"
+    stat -c '%s' -- "$1"
 }
 
 
@@ -80,12 +27,7 @@ select_files() {
     local target_bytes="$2"
     local paths_file="$3"
     local total_size_bytes=0
-    local count
-    local i
-    local lines=""
-    local sorted
-    local mtime
-    local idx
+    local entry
     local filepath
     local size
 
@@ -96,25 +38,10 @@ select_files() {
 
     : > "$paths_file"
 
-    collect_files "$log_dir"
-    count=${#FILES[@]}
-
-    if (( count == 0 )); then
-        echo "Not enough files to free the required space" >&2
-        return 1
-    fi
-
-    for (( i = 0; i < count; i++ )); do
-        mtime=$(file_mtime "${FILES[i]}") || return 1
-        lines+="$mtime $i"$'\n'
-    done
-
-    sorted=$(printf '%s' "$lines" | sort -k1,1n -k2,2n)
-
-    while read -r mtime idx; do
-        filepath="${FILES[idx]}"
-
-        size=$(file_size "$filepath") || return 1
+    while IFS= read -r -d '' entry; do
+        entry=${entry#* }
+        size=${entry%% *}
+        filepath=${entry#* }
 
         printf '%s\0' "$filepath" >> "$paths_file"
         total_size_bytes=$((total_size_bytes + size))
@@ -122,7 +49,7 @@ select_files() {
         if (( total_size_bytes >= target_bytes )); then
             return 0
         fi
-    done <<< "$sorted"
+    done < <(find "$log_dir" -maxdepth 1 -type f -printf '%T@ %s %p\0' | sort -zn)
 
     echo "Not enough files to free the required space" >&2
     return 1
@@ -294,8 +221,7 @@ validate_directories() {
         return 1
     fi
 
-    collect_files "$log_dir"
-    if (( ${#FILES[@]} == 0 )); then
+    if [[ -z "$(find "$log_dir" -maxdepth 1 -type f -print -quit)" ]]; then
         echo "Error: no files found in log directory" >&2
         return 1
     fi
@@ -310,13 +236,12 @@ validate_directories() {
         return 1
     fi
 
-    # realpath is missing on older macOS and some BSDs, so use cd -P and pwd -P.
-    real_log_dir=$(cd -P -- "$log_dir" && pwd -P) || {
+    real_log_dir=$(realpath -- "$log_dir") || {
         echo "Error: cannot resolve log directory path" >&2
         return 1
     }
 
-    real_backup_dir=$(cd -P -- "$backup_dir" && pwd -P) || {
+    real_backup_dir=$(realpath -- "$backup_dir") || {
         echo "Error: cannot resolve backup directory path" >&2
         return 1
     }
