@@ -17,8 +17,39 @@ source "$TEST_DIR/helpers.sh"
 # shellcheck source=cases.sh
 source "$TEST_DIR/cases.sh"
 
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+MOUNT_DIR="$ROOT_DIR/logs"
+DISK_CREATED=0
+TMP=""
+
+cleanup() {
+  local status=$?
+
+  if [ -n "$TMP" ]; then
+    rm -rf -- "$TMP" || status=1
+  fi
+
+  if [ "$DISK_CREATED" -eq 1 ]; then
+    bash "$ROOT_DIR/virtual_disk/detach_disk.sh" || status=1
+  fi
+
+  return "$status"
+}
+
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "FAIL: tests require Linux or Windows with WSL to mount the virtual disk" >&2
+  exit 1
+fi
+
+if ! mountpoint -q -- "$MOUNT_DIR"; then
+  bash "$ROOT_DIR/virtual_disk/setup_disk.sh" || exit 1
+  DISK_CREATED=1
+fi
+
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+TMP=$(mktemp -d "$MOUNT_DIR/.tests.XXXXXX") || exit 1
 
 PASSED=0
 TOTAL=0
