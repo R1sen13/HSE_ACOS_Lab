@@ -10,11 +10,10 @@ if [ ! -f "$LIB_PATH" ]; then
   exit 1
 fi
 
-# shellcheck source=../log_rotate.sh
 source "$LIB_PATH"
-# shellcheck source=helpers.sh
+
 source "$TEST_DIR/helpers.sh"
-# shellcheck source=cases.sh
+
 source "$TEST_DIR/cases.sh"
 
 MOUNT_DIR="$ROOT_DIR/logs"
