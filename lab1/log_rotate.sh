@@ -9,9 +9,6 @@ backup_dir=""
 threshold=70
 temp_dir=""
 
-FILES=()
-STAT_MODE=""
-
 show_help() {
     echo "Usage: $0 -p LOG_DIR -b BACKUP_DIR [-x THRESHOLD]"
     echo "  -p LOG_DIR      Directory containing log files"
@@ -20,74 +17,12 @@ show_help() {
     echo "  -h              Show this help"
 }
 
-
-collect_files() {
-    local dir="$1"
-    local restore
-    local f
-
-    FILES=()
-    restore=$(shopt -p dotglob nullglob || true)
-    shopt -s dotglob nullglob
-
-    for f in "$dir"/*; do
-        if [[ -f "$f" && ! -L "$f" ]]; then
-            FILES+=("$f")
-        fi
-    done
-
-    eval "$restore"
-}
-
-detect_stat() {
-    if stat -c '%Y' / > /dev/null 2>&1; then
-        STAT_MODE="gnu"
-    elif stat -f '%m' / > /dev/null 2>&1; then
-        STAT_MODE="bsd"
-    elif command -v perl > /dev/null 2>&1; then
-        STAT_MODE="perl"
-    else
-        STAT_MODE="none"
-    fi
-}
-
-file_mtime() {
-    if [[ -z "$STAT_MODE" ]]; then
-        detect_stat
-    fi
-
-    case "$STAT_MODE" in
-        gnu)  stat -c '%Y' "$1" ;;
-        bsd)  stat -f '%m' "$1" ;;
-        perl) perl -e 'print((stat($ARGV[0]))[9])' "$1" ;;
-        *)
-            echo "Error: neither stat nor perl is available" >&2
-            return 1
-            ;;
-    esac
-}
-
-file_size() {
-    local size
-
-    size=$(wc -c < "$1") || return 1
-    printf '%s\n' "$(printf '%s' "$size" | tr -d ' ')"
-}
-
-
 select_files() {
     local log_dir="$1"
     local target_bytes="$2"
     local paths_file="$3"
     local total_size_bytes=0
-    local count
-    local i
-    local lines=""
-    local sorted
-    local mtime
-    local idx
-    local filepath
-    local size
+    local entry filepath size
 
     if [[ ! -d "$log_dir" || ! "$target_bytes" =~ ^[0-9]+$ || -z "$paths_file" ]]; then
         echo "Invalid arguments for select_files" >&2
@@ -96,25 +31,10 @@ select_files() {
 
     : > "$paths_file"
 
-    collect_files "$log_dir"
-    count=${#FILES[@]}
-
-    if (( count == 0 )); then
-        echo "Not enough files to free the required space" >&2
-        return 1
-    fi
-
-    for (( i = 0; i < count; i++ )); do
-        mtime=$(file_mtime "${FILES[i]}") || return 1
-        lines+="$mtime $i"$'\n'
-    done
-
-    sorted=$(printf '%s' "$lines" | sort -k1,1n -k2,2n)
-
-    while read -r mtime idx; do
-        filepath="${FILES[idx]}"
-
-        size=$(file_size "$filepath") || return 1
+    while IFS= read -r -d '' entry; do
+        entry=${entry#* }
+        size=${entry%% *}
+        filepath=${entry#* }
 
         printf '%s\0' "$filepath" >> "$paths_file"
         total_size_bytes=$((total_size_bytes + size))
@@ -122,7 +42,7 @@ select_files() {
         if (( total_size_bytes >= target_bytes )); then
             return 0
         fi
-    done <<< "$sorted"
+    done < <(find "$log_dir" -maxdepth 1 -type f -printf '%T@ %s %p\0' | sort -zn)
 
     echo "Not enough files to free the required space" >&2
     return 1
@@ -131,10 +51,10 @@ select_files() {
 create_archive() {
     local backup_dir="$1"
     local paths_file="$2"
-    local timestamp
-    local archive
-    local filepath
+    local timestamp archive filepath
     local files=()
+    local compressor=(gzip -c)
+    local extension=tar.gz
 
     if [[ ! -d "$backup_dir" || ! -f "$paths_file" ]]; then
         echo "Backup directory or selection file does not exist" >&2
@@ -157,31 +77,25 @@ create_archive() {
             echo "Error: xz is required for LAB1_MAX_COMPRESSION=1" >&2
             return 1
         fi
-
-        archive="$backup_dir/log_backup_${timestamp}.tar.lzma"
-        (
-            set -o pipefail
-            tar -cf - "${files[@]}" | xz --format=lzma -9e -c > "$archive"
-        ) || {
-            rm -f -- "$archive"
-            return 1
-        }
-    else
-        archive="$backup_dir/log_backup_${timestamp}.tar.gz"
-        (
-            set -o pipefail
-            tar -cf - "${files[@]}" | gzip -c > "$archive"
-        ) || {
-            rm -f -- "$archive"
-            return 1
-        }
+        compressor=(xz --format=lzma -9e -c)
+        extension=tar.lzma
     fi
+
+    archive="$backup_dir/log_backup_${timestamp}.${extension}"
+    (
+        set -o pipefail
+        tar -cf - "${files[@]}" | "${compressor[@]}" > "$archive"
+    ) || {
+        rm -f -- "$archive"
+        return 1
+    }
 
     printf '%s\n' "$archive"
 }
 
 verify_archive() {
     local archive="$1"
+    local decompressor=(gzip -dc)
 
     if [[ ! -f "$archive" ]]; then
         echo "Archive does not exist: $archive" >&2
@@ -189,16 +103,13 @@ verify_archive() {
     fi
 
     if [[ "$archive" == *.tar.lzma ]]; then
-        (
-            set -o pipefail
-            xz -dc --format=lzma < "$archive" | tar -tf - > /dev/null 2>&1
-        )
-    else
-        (
-            set -o pipefail
-            gzip -dc < "$archive" | tar -tf - > /dev/null 2>&1
-        )
+        decompressor=(xz -dc --format=lzma)
     fi
+
+    (
+        set -o pipefail
+        "${decompressor[@]}" < "$archive" | tar -tf - > /dev/null 2>&1
+    )
 }
 
 remove_archived_files() {
@@ -230,15 +141,9 @@ parse_arguments() {
 
     while getopts ":p:x:b:h" opt; do
         case "$opt" in
-            p)
-                log_dir="$OPTARG"
-                ;;
-            x)
-                threshold="$OPTARG"
-                ;;
-            b)
-                backup_dir="$OPTARG"
-                ;;
+            p) log_dir="$OPTARG" ;;
+            x) threshold="$OPTARG" ;;
+            b) backup_dir="$OPTARG" ;;
             h)
                 show_help
                 exit 0
@@ -281,8 +186,7 @@ validate_arguments() {
 }
 
 validate_directories() {
-    local real_log_dir
-    local real_backup_dir
+    local real_log_dir real_backup_dir
 
     if [[ ! -d "$log_dir" ]]; then
         echo "Error: log directory does not exist: $log_dir" >&2
@@ -294,8 +198,7 @@ validate_directories() {
         return 1
     fi
 
-    collect_files "$log_dir"
-    if (( ${#FILES[@]} == 0 )); then
+    if [[ -z "$(find "$log_dir" -maxdepth 1 -type f -print -quit)" ]]; then
         echo "Error: no files found in log directory" >&2
         return 1
     fi
@@ -310,13 +213,12 @@ validate_directories() {
         return 1
     fi
 
-    # realpath is missing on older macOS and some BSDs, so use cd -P and pwd -P.
-    real_log_dir=$(cd -P -- "$log_dir" && pwd -P) || {
+    real_log_dir=$(realpath -- "$log_dir") || {
         echo "Error: cannot resolve log directory path" >&2
         return 1
     }
 
-    real_backup_dir=$(cd -P -- "$backup_dir" && pwd -P) || {
+    real_backup_dir=$(realpath -- "$backup_dir") || {
         echo "Error: cannot resolve backup directory path" >&2
         return 1
     }
@@ -329,9 +231,7 @@ validate_directories() {
 
 get_fs_usage() {
     local directory="$1"
-    local stats
-    local fs_size
-    local fs_used
+    local stats fs_size fs_used
 
     stats=$(df -Pk "$directory" 2> /dev/null) || {
         echo "Error: cannot get filesystem usage for $directory" >&2
@@ -352,25 +252,15 @@ get_fs_usage() {
 }
 
 rotate_logs() {
-    local fs_size
-    local current_bytes
-    local current_percent
-    local target_bytes
-    local required_bytes
-    local stats
-    local paths_file
-    local selected_count=0
-    local selected_bytes=0
-    local filepath
-    local size
-    local archive_path
+    local fs_size current_bytes current_percent required_bytes
+    local stats paths_file filepath size archive_path
+    local selected_count=0 selected_bytes=0
 
     stats=$(get_fs_usage "$log_dir") || return 1
     read -r fs_size current_bytes <<< "$stats"
 
     current_percent=$((current_bytes * 100 / fs_size))
-    target_bytes=$((fs_size * threshold / 100))
-    required_bytes=$((current_bytes - target_bytes))
+    required_bytes=$((current_bytes - fs_size * threshold / 100))
 
     echo "Current fill: ${current_percent}%"
     echo "Threshold: ${threshold}%"
@@ -378,10 +268,6 @@ rotate_logs() {
     if (( current_bytes * 100 <= fs_size * threshold )); then
         echo "No rotation required."
         return 0
-    fi
-
-    if (( required_bytes <= 0 )); then
-        required_bytes=1
     fi
 
     echo "Need to free at least ${required_bytes} bytes."
@@ -395,13 +281,10 @@ rotate_logs() {
 
     trap 'rm -rf -- "$temp_dir"' EXIT
 
-    if ! select_files "$log_dir" "$required_bytes" "$paths_file"; then
-        echo "Error: failed to select files for archiving" >&2
-        return 1
-    fi
+    select_files "$log_dir" "$required_bytes" "$paths_file" || return 1
 
     while IFS= read -r -d '' filepath; do
-        size=$(file_size "$filepath") || {
+        size=$(stat -c '%s' -- "$filepath") || {
             echo "Error: cannot get file size: $filepath" >&2
             return 1
         }
@@ -427,10 +310,7 @@ rotate_logs() {
 
     echo "Archive verification successful."
 
-    if ! remove_archived_files "$paths_file"; then
-        echo "Error: failed to remove archived files" >&2
-        return 1
-    fi
+    remove_archived_files "$paths_file" || return 1
 
     stats=$(get_fs_usage "$log_dir") || return 1
     read -r fs_size current_bytes <<< "$stats"
@@ -444,8 +324,6 @@ rotate_logs() {
     else
         echo "Warning: fill is still above the threshold (${threshold}%)."
     fi
-
-    return 0
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
