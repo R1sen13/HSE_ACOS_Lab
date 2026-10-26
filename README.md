@@ -70,7 +70,7 @@ chmod +x log_rotate.sh
 
 ### Формат архива
 
-Архивы создаются в `BACKUP_DIR` с именем `log_backup_<ГГГГММДД_ЧЧММСС_наносекунды>.tar.gz`. При `LAB1_MAX_COMPRESSION=1` расширение будет `.tar.lzma`.
+Архивы создаются в `BACKUP_DIR` с именем `log_backup_<ГГГГММДД_ЧЧММСС>_<PID>_<RANDOM>.tar.gz`. При `LAB1_MAX_COMPRESSION=1` расширение будет `.tar.lzma`.
 
 ### Коды возврата
 
