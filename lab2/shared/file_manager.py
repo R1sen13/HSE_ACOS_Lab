@@ -31,7 +31,12 @@ class FileManager:
         return self._fd
 
     def read_message(self) -> dict[str, Any]:
-        """Read JSON under an exclusive lock; propagate OS and JSON errors."""
+        """Read a JSON object under a blocking exclusive lock.
+
+        Empty files and non-object JSON raise ValueError; malformed JSON raises
+        json.JSONDecodeError. UnicodeDecodeError and OSError propagate unchanged.
+        No protocol state is inferred or repaired.
+        """
         fd = self._get_fd()
         fcntl.flock(fd, fcntl.LOCK_EX)
         try:
@@ -39,20 +44,36 @@ class FileManager:
             data = bytearray()
             while chunk := os.read(fd, 65536):
                 data.extend(chunk)
-            return json.loads(data.decode("utf-8"))
+            if not data:
+                raise ValueError("Shared file is empty")
+            message = json.loads(data.decode("utf-8"))
+            if not isinstance(message, dict):
+                raise ValueError("Shared file must contain a JSON object")
+            return message
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
 
     def write_message(self, message: dict[str, Any]) -> None:
-        """Replace file contents with UTF-8 JSON under an exclusive lock."""
+        """Replace contents with a JSON object, handling partial writes.
+
+        Validate and serialize before truncating. TypeError/ValueError describe
+        invalid input; OS failures propagate as OSError. A failed write or a
+        process crash can leave incomplete data: flock is not crash recovery.
+        """
         fd = self._get_fd()
-        data = json.dumps(message, ensure_ascii=False).encode("utf-8")
+        if not isinstance(message, dict):
+            raise TypeError("Message must be a dictionary")
+        data = json.dumps(message, ensure_ascii=False, allow_nan=False).encode("utf-8")
         fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             os.lseek(fd, 0, os.SEEK_SET)
             os.ftruncate(fd, 0)
-            if os.write(fd, data) != len(data):
-                raise OSError(errno.EIO, "Incomplete JSON write")
+            remaining = memoryview(data)
+            while remaining:
+                written = os.write(fd, remaining)
+                if written == 0:
+                    raise OSError(errno.EIO, "JSON write made no progress")
+                remaining = remaining[written:]
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
 
