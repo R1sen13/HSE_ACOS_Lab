@@ -16,7 +16,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="number of exchanges to perform (0 - infinite)")
     p.add_argument("--timeout", type=float, default=config.RESPONSE_TIMEOUT)
     p.add_argument("--interval", type=float, default=config.POLL_INTERVAL)
-    p.add_argumnet("--delay", type=float, default=0.0, help="delay beetween requests, s")
+    p.add_argument("--delay", type=float, default=0.0, help="delay beetween requests, s")
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
 
@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
             request_delay=args.delay,
         )
         ok = client.run(None if args.count == 0 else args.count)
-        log.info("done: %d successful exchange(s)", cient.completed)
+        log.info("done: %d successful exchange(s)", client.completed)
         return 0 if ok else 1
     except KeyboardInterrupt:
         log.info("interrupted by user")

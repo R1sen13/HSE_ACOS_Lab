@@ -45,7 +45,7 @@ class PingPongClient:
         self._clock = clock
 
         self.request_id = 1
-        self.complemented = 0
+        self.completed = 0
         self._retries = 0
         self._last_error: ClientError | None = None
 
@@ -142,10 +142,10 @@ class PingPongClient:
             if msg["state"] == protocol.STATE_ERROR:
                 self._write(protocol.make_empty())
         except ClientError as exc :
-            log.error("cannot recover: %S", exc)
+            log.error("cannot recover: %s", exc)
             return ClientState.DONE
         log.warning("retry %d/%d for request_id=%d",
-                    self._retries, self._max_retries, self._request_id)
+                    self._retries, self._max_retries, self.request_id)
         return ClientState.CREATE_REQUEST
 
     def _read_checked(self) -> dict[str, Any]:
@@ -160,6 +160,6 @@ class PingPongClient:
 
     def _write(self, message: dict[str, Any]) -> None:
         try:
-            self._manager.write._message(message)
+            self._manager.write_message(message)
         except OSError as exc:
             raise ClientError(f"file write error: {exc}") from exc
