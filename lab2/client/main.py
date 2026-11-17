@@ -16,9 +16,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="number of exchanges to perform (0 - infinite)")
     p.add_argument("--timeout", type=float, default=config.RESPONSE_TIMEOUT)
     p.add_argument("--interval", type=float, default=config.POLL_INTERVAL)
-    p.add_argument("--delay", type=float, default=0.0, help="delay beetween requests, s")
+    p.add_argument("--delay", type=float, default=0.0, help="delay between requests, s")
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
+
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)

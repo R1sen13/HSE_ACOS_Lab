@@ -86,7 +86,7 @@ class PingPongClient:
         return ClientState.WAIT_RESPONSE
 
     def _wait_response(self) -> ClientState:
-        deadline  = self._clock() + self._timeout
+        deadline = self._clock() + self._timeout
         while True:
             msg = self._read_checked()
             state = msg["state"]
@@ -97,10 +97,10 @@ class PingPongClient:
                     f"server reported ERROR: {msg.get('message')!r}", retryable=True
                 )
             if state == protocol.STATE_EMPTY:
-                raise ClientError("invalid transition: fie is EMPTY while waiting")
+                raise ClientError("invalid transition: file is EMPTY while waiting")
             if self._clock() >= deadline:
                 raise ClientError(
-                    f"timeout: no pong for request_id{self.request_id}"
+                    f"timeout: no pong for request_id={self.request_id} "
                     f"in {self._timeout} s"
                 )
             self._sleep(self._poll)
@@ -108,7 +108,7 @@ class PingPongClient:
     def _read_response(self) -> ClientState:
         msg = self._read_checked()
         if msg["state"] != protocol.STATE_RESPONSE:
-            raise ClientError(f"unexpected state{msg['state']!r}, expected RESPONSE")
+            raise ClientError(f"unexpected state {msg['state']!r}, expected RESPONSE")
         if msg["request_id"] != self.request_id:
             raise ClientError(
                 f"request_id mismatch: expected {self.request_id}, "
@@ -120,8 +120,8 @@ class PingPongClient:
         self._write(protocol.make_empty())
         log.info("<- pong (request_id=%d)", self.request_id)
 
-        self.completed +=1
-        self.request_id +=1
+        self.completed += 1
+        self.request_id += 1
         self._retries = 0
         if self._delay:
             self._sleep(self._delay)
@@ -132,7 +132,7 @@ class PingPongClient:
         log.error("error: %s", err)
 
         if err is None or not err.retryable or self._retries >= self._max_retries:
-            log.error("stopping client; if neeeded, reset the file manually"
+            log.error("stopping client; if neeeded, reset the file manually "
                       'to {"state": "EMPTY"} with both apps stopped')
             return ClientState.DONE
 
@@ -141,7 +141,7 @@ class PingPongClient:
             msg = self._read_checked()
             if msg["state"] == protocol.STATE_ERROR:
                 self._write(protocol.make_empty())
-        except ClientError as exc :
+        except ClientError as exc:
             log.error("cannot recover: %s", exc)
             return ClientState.DONE
         log.warning("retry %d/%d for request_id=%d",
