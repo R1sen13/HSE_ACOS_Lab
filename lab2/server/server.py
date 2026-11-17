@@ -86,21 +86,48 @@ class PingPongServer:
         """Wait for a new request without holding the file lock."""
         try:
             message = self._manager.read_message()
-            protocol.validate_message(message)
-
-        except (ValueError, TypeError, KeyError) as exc:
+        except (OSError, ValueError, TypeError, KeyError) as exc:
             self._last_error = exc
+            self._request = None
+            return ServerState.HANDLE_ERROR
+
+        if not isinstance(message, dict):
+            self._last_error = ServerError(
+                "Shared file must contain a JSON object"
+            )
+            self._request = None
             return ServerState.HANDLE_ERROR
 
         state = message.get("state")
 
         if state == protocol.STATE_EMPTY:
+            try:
+                protocol.validate_message(message)
+            except (ValueError, TypeError, KeyError) as exc:
+                self._last_error = exc
+                self._request = None
+                return ServerState.HANDLE_ERROR
+
             self._sleep(self._poll_interval)
             return ServerState.WAIT_REQUEST
 
         if state == protocol.STATE_REQUEST:
             self._request = message
+
+            try:
+                protocol.validate_message(message)
+            except (ValueError, TypeError, KeyError) as exc:
+                self._last_error = exc
+                return ServerState.HANDLE_ERROR
+
             return ServerState.PROCESS_REQUEST
+
+        try:
+            protocol.validate_message(message)
+        except (ValueError, TypeError, KeyError) as exc:
+            self._last_error = exc
+            self._request = None
+            return ServerState.HANDLE_ERROR
 
         # RESPONSE and ERROR are not requests for this server.
         self._sleep(self._poll_interval)
@@ -109,14 +136,12 @@ class PingPongServer:
     def _process_request(self) -> ServerState:
         """Validate the received Ping request."""
         if self._request is None:
-            self._last_error = ServerError(
-                "No request available to process"
-            )
+            self._last_error = ServerError("No request available to process")
             return ServerState.HANDLE_ERROR
 
-        if self._request["message"] != protocol.MESSAGE_PING:
+        if self._request.get("message") != protocol.MESSAGE_PING:
             self._last_error = ServerError(
-                f"Unexpected message: {self._request['message']!r}"
+                f"Unexpected message: {self._request.get('message')!r}"
             )
             return ServerState.HANDLE_ERROR
 
@@ -150,16 +175,26 @@ class PingPongServer:
         return ServerState.WAIT_REQUEST
 
     def _handle_error(self) -> ServerState:
-        """Log an error without overwriting unknown shared-file contents."""
+        """Report invalid requests or stop on unreadable shared-file data."""
         if self._last_error is not None:
-            log.error(
-                "Cannot process shared-file message: %s",
-                self._last_error,
-            )
+            log.error("Cannot process shared-file message: %s", self._last_error)
+
+        if self._request is None:
+            # We cannot safely overwrite data that we could not parse.
+            self._running = False
+            return ServerState.WAIT_REQUEST
+
+        error_message = {
+            "state": protocol.STATE_ERROR,
+            "message": str(self._last_error or "Invalid request"),
+        }
+
+        self._manager.write_message(error_message)
+
+        log.warning("Sent ERROR response to client")
 
         self._request = None
         self._last_error = None
 
-        self._sleep(self._poll_interval)
-
         return ServerState.WAIT_REQUEST
+
