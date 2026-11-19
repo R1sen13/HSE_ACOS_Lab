@@ -1,6 +1,5 @@
 import os
 
-
 SHARED_FILE_PATH: str = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
