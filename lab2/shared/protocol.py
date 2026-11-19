@@ -1,7 +1,14 @@
 from . import config
 
+STATE_EMPTY = config.STATE_EMPTY
+STATE_REQUEST = config.STATE_REQUEST
+STATE_RESPONSE = config.STATE_RESPONSE
+STATE_ERROR = config.STATE_ERROR
+MESSAGE_PING = config.MESSAGE_PING
+MESSAGE_PONG = config.MESSAGE_PONG
 
-def make_empty() -> dict: 
+
+def make_empty() -> dict:
     return ({"state": config.STATE_EMPTY})
 
 
@@ -55,5 +62,7 @@ def validate_message(data: dict) -> bool:
             raise ValueError("'request_id' must be int")
         if data.get("message") != config.MESSAGE_PONG:
             raise ValueError("'message' must be 'pong'")
+
+    return True
     
 
