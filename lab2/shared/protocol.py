@@ -9,14 +9,14 @@ MESSAGE_PONG = config.MESSAGE_PONG
 
 
 def make_empty() -> dict:
-    return ({"state": config.STATE_EMPTY})
+    return {"state": config.STATE_EMPTY}
 
 
 def make_request(request_id: int) -> dict:
     return {
         "state": config.STATE_REQUEST,
         "request_id": request_id,
-        "message": config.MESSAGE_PING
+        "message": config.MESSAGE_PING,
         }
 
 
@@ -32,7 +32,7 @@ def validate_message(data: dict) -> bool:
         config.STATE_ERROR,
         config.STATE_REQUEST,
         config.STATE_RESPONSE
-        ]:
+    ]:
         raise ValueError("State value is incorrect")
         
     if data_state == config.STATE_EMPTY:
