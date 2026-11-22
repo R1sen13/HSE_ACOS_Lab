@@ -14,7 +14,7 @@ class ServerState(Enum):
 
 
 class ServerError(Exception):
-    """Raised when the server cannot continue safely."""
+    pass
 
 
 class PingPongServer:
