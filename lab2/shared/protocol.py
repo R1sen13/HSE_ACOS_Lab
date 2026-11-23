@@ -28,6 +28,13 @@ def make_response(request_id: int) -> dict:
     }
 
 
+def make_error(error_message: str) -> dict:
+    return {
+        "state": STATE_ERROR,
+        "message": error_message,
+    }
+
+
 def validate_message(data: dict) -> bool:
     if not isinstance(data, dict):
         raise ValueError("Message must be a dict")
