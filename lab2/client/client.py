@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import logging
+import sys
 import time
 from enum import Enum, auto
-from typing import Any, Callable
+from typing import Callable
 
-from shared import protocol
+from shared import config, protocol
+from shared.file_manager import FileManager
 
-log = logging.getLogger("client")
+REQUEST_DELAY = 0.0
+MAX_RETRIES = 3
 
 
 class ClientState(Enum):
@@ -27,12 +29,12 @@ class ClientError(Exception):
 class PingPongClient:
     def __init__(
         self,
-        manager: Any,
+        manager: FileManager,
         *,
-        timeout: float = 5.0,
-        poll_interval: float = 0.1,
-        request_delay: float = 0.0,
-        max_retries: int = 3,
+        timeout: float = config.RESPONSE_TIMEOUT,
+        poll_interval: float = config.POLL_INTERVAL,
+        request_delay: float = REQUEST_DELAY,
+        max_retries: int = MAX_RETRIES,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -82,7 +84,7 @@ class PingPongClient:
             self._sleep(self._poll)
 
         self._write(protocol.make_request(self.request_id))
-        log.info("-> ping (request_id=%d)", self.request_id)
+        print(f"-> ping (request_id={self.request_id})")
         return ClientState.WAIT_RESPONSE
 
     def _wait_response(self) -> ClientState:
@@ -118,7 +120,7 @@ class PingPongClient:
             raise ClientError(f"unexpected message {msg['message']!r}, expected 'pong'")
 
         self._write(protocol.make_empty())
-        log.info("<- pong (request_id=%d)", self.request_id)
+        print("<- pong (request_id={self.request_id})")
 
         self.completed += 1
         self.request_id += 1
@@ -129,11 +131,14 @@ class PingPongClient:
 
     def _handle_error(self) -> ClientState:
         err = self._last_error
-        log.error("error: %s", err)
+        print(f"Error: {err}", file=sys.stderr)
 
         if err is None or not err.retryable or self._retries >= self._max_retries:
-            log.error("stopping client; if neeeded, reset the file manually "
-                      'to {"state": "EMPTY"} with both apps stopped')
+            print(
+                "Client stopped. If neeeded, reset the file manually "
+                'to {"state": "EMPTY"} with both apps stopped',
+                file=sys.stderr,
+            )
             return ClientState.DONE
 
         self._retries += 1
@@ -142,13 +147,11 @@ class PingPongClient:
             if msg["state"] == protocol.STATE_ERROR:
                 self._write(protocol.make_empty())
         except ClientError as exc:
-            log.error("cannot recover: %s", exc)
+            print(f"Cannot recover: {exc}", file=sys.stderr)
             return ClientState.DONE
-        log.warning("retry %d/%d for request_id=%d",
-                    self._retries, self._max_retries, self.request_id)
         return ClientState.CREATE_REQUEST
 
-    def _read_checked(self) -> dict[str, Any]:
+    def _read_checked(self) -> dict[str, object]:
         try:
             msg = self._manager.read_message()
             protocol.validate_message(msg)
@@ -158,8 +161,8 @@ class PingPongClient:
             raise ClientError(f"file I/O error: {exc}") from exc
         return msg
 
-    def _write(self, message: dict[str, Any]) -> None:
+    def _write(self, message: dict[str, object]) -> None:
         try:
             self._manager.write_message(message)
-        except OSError as exc:
+        except (OSError, ValueError, TypeError) as exc:
             raise ClientError(f"file write error: {exc}") from exc
