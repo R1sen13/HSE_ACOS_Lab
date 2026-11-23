@@ -12,9 +12,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ping-Pong IPC client (N1)")
     parser.add_argument(
         "--count",
-         type=int,
-         default=10,
-         help="number of exchanges to perform (0 - infinite)",
+        type=int,
+        default=10,
+        help="number of exchanges to perform (0 - infinite)",
     )
     return parser.parse_args(argv)
 
@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 130
 
     except OSError as exc:
-        print("Cannot open shared file: {exc}", file=sys.stderr)
+        print(f"Cannot open shared file: {exc}", file=sys.stderr)
         exit_code = 1
 
     finally:

@@ -120,7 +120,7 @@ class PingPongClient:
             raise ClientError(f"unexpected message {msg['message']!r}, expected 'pong'")
 
         self._write(protocol.make_empty())
-        print("<- pong (request_id={self.request_id})")
+        print(f"<- pong (request_id={self.request_id})")
 
         self.completed += 1
         self.request_id += 1
@@ -135,7 +135,7 @@ class PingPongClient:
 
         if err is None or not err.retryable or self._retries >= self._max_retries:
             print(
-                "Client stopped. If neeeded, reset the file manually "
+                "Client stopped. If needed, reset the file manually "
                 'to {"state": "EMPTY"} with both apps stopped',
                 file=sys.stderr,
             )
