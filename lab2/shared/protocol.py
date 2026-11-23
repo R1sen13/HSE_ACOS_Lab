@@ -20,6 +20,14 @@ def make_request(request_id: int) -> dict:
     }
 
 
+def make_response(request_id: int) -> dict:
+    return {
+        "state": STATE_RESPONSE, 
+        "request_id": request_id,
+        "message": MESSAGE_PONG,
+    }
+
+
 def validate_message(data: dict) -> bool:
     if not isinstance(data, dict):
         raise ValueError("Message must be a dict")
