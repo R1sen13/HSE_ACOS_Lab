@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import sys
+import logging
+import uuid
 import time
 from enum import Enum, auto
 from typing import Callable
@@ -11,6 +12,7 @@ from shared.file_manager import FileManager
 REQUEST_DELAY = 0.0
 MAX_RETRIES = 3
 
+log = logging.getLogger("client")
 
 class ClientState(Enum):
     CREATE_REQUEST = auto()
@@ -46,12 +48,14 @@ class PingPongClient:
         self._sleep = sleep
         self._clock = clock
 
+        self.client_id = str(uuid.uuid4())
         self.request_id = 1
         self.completed = 0
         self._retries = 0
         self._last_error: ClientError | None = None
 
     def run(self, count: int | None = None) -> bool:
+        log.info("client started (client_id=%s)", self.client_id)
         state = ClientState.CREATE_REQUEST
         while True:
             try:
@@ -83,8 +87,11 @@ class PingPongClient:
                 )
             self._sleep(self._poll)
 
-        self._write(protocol.make_request(self.request_id))
-        print(f"-> ping (request_id={self.request_id})")
+        request = protocol.make_request(self.request_id)
+        request["client_id"] = self.client_id
+        self._write(request)
+        log.info("-> ping (client_id=%s, request_id=%d)",
+                 self.client_id, self.request_id)
         return ClientState.WAIT_RESPONSE
 
     def _wait_response(self) -> ClientState:
@@ -120,7 +127,8 @@ class PingPongClient:
             raise ClientError(f"unexpected message {msg['message']!r}, expected 'pong'")
 
         self._write(protocol.make_empty())
-        print(f"<- pong (request_id={self.request_id})")
+        log.info("<- pong (client_id=%s, request_id=%d)",
+                 self.client_id, self.request_id)
 
         self.completed += 1
         self.request_id += 1
@@ -131,13 +139,12 @@ class PingPongClient:
 
     def _handle_error(self) -> ClientState:
         err = self._last_error
-        print(f"Error: {err}", file=sys.stderr)
+        log.error("error: %s", err)
 
         if err is None or not err.retryable or self._retries >= self._max_retries:
-            print(
-                "Client stopped. If needed, reset the file manually "
-                'to {"state": "EMPTY"} with both apps stopped',
-                file=sys.stderr,
+            log.error(
+                "stopping client. If needed, reset the file manually "
+                'to {"state": "EMPTY"} with both apps stopped'
             )
             return ClientState.DONE
 
@@ -147,8 +154,10 @@ class PingPongClient:
             if msg["state"] == protocol.STATE_ERROR:
                 self._write(protocol.make_empty())
         except ClientError as exc:
-            print(f"Cannot recover: {exc}", file=sys.stderr)
+            log.error("cannot recover: %s", exc)
             return ClientState.DONE
+        log.warning("retry %d/%d for request_id=%d",
+                    self._retries, self._max_retries, self.request_id)
         return ClientState.CREATE_REQUEST
 
     def _read_checked(self) -> dict[str, object]:

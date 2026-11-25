@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 
 from client.client import PingPongClient
@@ -16,11 +17,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=10,
         help="number of exchanges to perform (0 - infinite)",
     )
+    parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    log = logging.getLogger("client")
+
     manager = FileManager(config.SHARED_FILE_PATH)
     is_open = False
     exit_code = 0
@@ -31,15 +39,16 @@ def main(argv: list[str] | None = None) -> int:
 
         client = PingPongClient(manager)
         ok = client.run(None if args.count == 0 else args.count)
-        print(f"Done: {client.completed} successful exchange(s)")
+        log.info("done: %d successful exchange(s)", client.completed))
         if not ok:
             exit_code = 1
 
     except KeyboardInterrupt:
+        log.info("interrupted by user")
         exit_code = 130
 
     except OSError as exc:
-        print(f"Cannot open shared file: {exc}", file=sys.stderr)
+        log.error("cannot open shared file: %s", exc)
         exit_code = 1
 
     finally:
@@ -47,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 manager.close()
             except OSError as exc:
-                print(f"Failed to close shared file: {exc}", file=sys.stderr)
+                log.error("failed to close shared file: %s", exc)
                 exit_code = 1
 
     return exit_code
