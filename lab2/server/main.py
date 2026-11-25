@@ -1,3 +1,5 @@
+
+import logging
 import sys
 
 from server.server import PingPongServer
@@ -6,13 +8,22 @@ from shared.file_manager import FileManager
 
 
 def main() -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    log = logging.getLogger("server")
     manager = FileManager(config.SHARED_FILE_PATH)
+
     is_open = False
     exit_code = 0
 
     try:
         manager.open()
         is_open = True
+
+        log.info("Shared file opened")
 
         server = PingPongServer(
             manager,
@@ -22,18 +33,20 @@ def main() -> int:
         server.run()
 
     except KeyboardInterrupt:
+        log.info("Server interrupted by user")
         exit_code = 130
 
-    except Exception as exc:
-        print(f"Server terminated due to an unexpected error: {exc}", file=sys.stderr)
+    except Exception:
+        log.exception("Server terminated due to an unexpected error")
         exit_code = 1
 
     finally:
         if is_open:
             try:
                 manager.close()
-            except OSError as exc:
-                print(f"Failed to close shared file: {exc}", file=sys.stderr)
+                log.info("Shared file closed")
+            except OSError:
+                log.exception("Failed to close shared file")
                 exit_code = 1
 
     return exit_code

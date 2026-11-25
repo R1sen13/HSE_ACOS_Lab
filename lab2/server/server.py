@@ -1,9 +1,14 @@
+
+import logging
 import time
 from enum import Enum, auto
-from typing import Callable
+from typing import Callable, cast
 
 from shared import config, protocol
 from shared.file_manager import FileManager
+
+
+log = logging.getLogger(__name__)
 
 
 class ServerState(Enum):
@@ -48,59 +53,75 @@ class PingPongServer:
         self._running = True
         state = ServerState.WAIT_REQUEST
 
-        while self._running:
-            if (
-                max_requests is not None
-                and self.completed - initial_completed >= max_requests
-            ):
-                break
+        log.info("Server started")
 
-            if state is ServerState.WAIT_REQUEST:
-                state = self._wait_request()
+        try:
+            while self._running:
+                if (
+                    max_requests is not None
+                    and self.completed - initial_completed >= max_requests
+                ):
+                    break
 
-            elif state is ServerState.PROCESS_REQUEST:
-                state = self._process_request()
+                if state is ServerState.WAIT_REQUEST:
+                    state = self._wait_request()
 
-            elif state is ServerState.SEND_RESPONSE:
-                state = self._send_response()
+                elif state is ServerState.PROCESS_REQUEST:
+                    state = self._process_request()
 
-            elif state is ServerState.HANDLE_ERROR:
-                state = self._handle_error()
+                elif state is ServerState.SEND_RESPONSE:
+                    state = self._send_response()
 
-            else:
-                raise ServerError(f"Unknown server state: {state!r}")
+                elif state is ServerState.HANDLE_ERROR:
+                    state = self._handle_error()
 
-        self._running = False
+                else:
+                    raise ServerError(f"Unknown server state: {state!r}")
+
+        finally:
+            self._running = False
+            processed = self.completed - initial_completed
+
+            log.info(
+                "Server stopped. Processed requests: %d",
+                processed,
+            )
+
         return self.completed - initial_completed
 
     def _wait_request(self) -> ServerState:
         try:
             message = self._manager.read_message()
         except (OSError, ValueError, TypeError, KeyError) as exc:
+            log.error("Failed to read shared message: %s", exc)
             self._last_error = exc
             self._request = None
             return ServerState.HANDLE_ERROR
 
         if not isinstance(message, dict):
-            self._last_error = ServerError("Shared file must contain a JSON object")
+            self._last_error = ServerError(
+                "Shared file must contain a JSON object"
+            )
             self._request = None
             return ServerState.HANDLE_ERROR
+
+        if message.get("state") == protocol.STATE_REQUEST:
+            self._request = message
 
         try:
             protocol.validate_message(message)
         except (ValueError, TypeError, KeyError) as exc:
+            log.warning("Invalid message received: %s", exc)
             self._last_error = exc
-            self._request = None
             return ServerState.HANDLE_ERROR
 
-        message_state = message.get("state")
+        message_state = message["state"]
 
         if message_state == protocol.STATE_EMPTY:
             self._sleep(self._poll_interval)
             return ServerState.WAIT_REQUEST
 
         if message_state == protocol.STATE_REQUEST:
-            self._request = message
             return ServerState.PROCESS_REQUEST
 
         self._sleep(self._poll_interval)
@@ -108,25 +129,34 @@ class PingPongServer:
 
     def _process_request(self) -> ServerState:
         if self._request is None:
-            self._last_error = ServerError("No request available to process")
+            self._last_error = ServerError(
+                "No request available to process"
+            )
             return ServerState.HANDLE_ERROR
+
+        log.info(
+            "Received Ping. request_id=%s",
+            self._request["request_id"],
+        )
 
         return ServerState.SEND_RESPONSE
 
     def _send_response(self) -> ServerState:
         if self._request is None:
-            self._last_error = ServerError("No request available to answer")
+            self._last_error = ServerError(
+                "No request available to answer"
+            )
             return ServerState.HANDLE_ERROR
 
-        request_id = self._request["request_id"]
-
-        response = {
-            "state": protocol.STATE_RESPONSE,
-            "request_id": request_id,
-            "message": protocol.MESSAGE_PONG,
-        }
+        request_id = cast(int, self._request["request_id"])
+        response = protocol.make_response(request_id)
 
         self._manager.write_message(response)
+
+        log.info(
+            "Sent Pong. request_id=%s",
+            request_id,
+        )
 
         self.completed += 1
         self._request = None
@@ -136,15 +166,22 @@ class PingPongServer:
 
     def _handle_error(self) -> ServerState:
         if self._request is None:
+            log.error(
+                "Cannot send ERROR response. "
+                "No valid request context. Stopping server."
+            )
             self._running = False
             return ServerState.WAIT_REQUEST
 
-        error_message = {
-            "state": protocol.STATE_ERROR,
-            "message": str(self._last_error or "Invalid request"),
-        }
+        error = self._last_error or ServerError("Invalid request")
+        error_message = protocol.make_error(str(error))
 
         self._manager.write_message(error_message)
+
+        log.warning(
+            "Sent ERROR response to client: %s",
+            error,
+        )
 
         self._request = None
         self._last_error = None
