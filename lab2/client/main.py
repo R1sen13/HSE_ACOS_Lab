@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
 
         client = PingPongClient(manager)
         ok = client.run(None if args.count == 0 else args.count)
-        log.info("done: %d successful exchange(s)", client.completed))
+        log.info("done: %d successful exchange(s)", client.completed)
         if not ok:
             exit_code = 1
 

@@ -14,6 +14,7 @@ MAX_RETRIES = 3
 
 log = logging.getLogger("client")
 
+
 class ClientState(Enum):
     CREATE_REQUEST = auto()
     WAIT_RESPONSE = auto()
