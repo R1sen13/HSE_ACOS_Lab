@@ -23,7 +23,7 @@ def make_request(request_id: str) -> dict:
 
 def make_response(request_id: str) -> dict:
     return {
-        "state": STATE_RESPONSE, 
+        "state": STATE_RESPONSE,
         "request_id": request_id,
         "message": MESSAGE_PONG,
     }
@@ -59,7 +59,7 @@ def validate_message(data: dict) -> bool:
     ]:
         raise ValueError("State value is incorrect")
 
-    if data_state == STATE_EMPTY and len(data) != 1 :
+    if data_state == STATE_EMPTY and len(data) != 1:
         raise ValueError("If state is EMPTY, message must contain only 'state'")
 
     if data_state == STATE_ERROR:
@@ -82,7 +82,7 @@ def validate_message(data: dict) -> bool:
         if "request_id" not in data:
             raise ValueError("'request_id' is missing")
         if not isinstance(data["request_id"], str):
-            raise ValueError("'request_id' must be int")
+            raise ValueError("'request_id' must be str")
         if not uuid_check(data["request_id"]):
             raise ValueError("UUID is incorrect")
         if data.get("message") != MESSAGE_PONG:
