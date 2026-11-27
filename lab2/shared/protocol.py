@@ -1,4 +1,5 @@
 from . import config
+import uuid
 
 STATE_EMPTY = config.STATE_EMPTY
 STATE_REQUEST = config.STATE_REQUEST
@@ -12,7 +13,7 @@ def make_empty() -> dict:
     return {"state": STATE_EMPTY}
 
 
-def make_request(request_id: int) -> dict:
+def make_request(request_id: str) -> dict:
     return {
         "state": STATE_REQUEST,
         "request_id": request_id,
@@ -20,7 +21,7 @@ def make_request(request_id: int) -> dict:
     }
 
 
-def make_response(request_id: int) -> dict:
+def make_response(request_id: str) -> dict:
     return {
         "state": STATE_RESPONSE, 
         "request_id": request_id,
@@ -33,6 +34,14 @@ def make_error(error_message: str) -> dict:
         "state": STATE_ERROR,
         "message": error_message,
     }
+
+
+def uuid_check(id_value: str) -> bool:
+    try:
+        uuid.UUID(id_value)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 def validate_message(data: dict) -> bool:
@@ -62,16 +71,20 @@ def validate_message(data: dict) -> bool:
     if data_state == STATE_REQUEST:
         if "request_id" not in data:
             raise ValueError("'request_id' is missing")
-        if not isinstance(data["request_id"], int):
-            raise ValueError("'request_id' must be int")
+        if not isinstance(data["request_id"], str):
+            raise ValueError("'request_id' must be str")
+        if not uuid_check(data["request_id"]):
+            raise ValueError("UUID is incorrect")
         if data.get("message") != MESSAGE_PING:
             raise ValueError("'message' must be 'ping'")
 
     if data_state == STATE_RESPONSE:
         if "request_id" not in data:
             raise ValueError("'request_id' is missing")
-        if not isinstance(data["request_id"], int):
+        if not isinstance(data["request_id"], str):
             raise ValueError("'request_id' must be int")
+        if not uuid_check(data["request_id"]):
+            raise ValueError("UUID is incorrect")
         if data.get("message") != MESSAGE_PONG:
             raise ValueError("'message' must be 'pong'")
 
